@@ -9,5 +9,5 @@
 module.exports = {
   upgrade: true,
   dep: "prod,dev",
-  packageManager: "yarn",
+  packageManager: "pnpm",
 };

@@ -1,5 +1,5 @@
 {
-  "extends": "@paleite/tsconfig-node16",
+  "$schema": "https://json.schemastore.org/tsconfig",
   "compilerOptions": {
     // #region Support running on Node 14 until EOL, April 30th, 2023
     // Recommended Node TSConfig settings (Node Target Mapping):
@@ -7,7 +7,23 @@
     // Node release EOLs:
     // https://nodejs.org/en/about/releases/
     "lib": ["ES2020"],
-    "target": "ES2020"
-    // #endregion
+    "target": "ES2020",
+    "allowUnreachableCode": false,
+    "allowUnusedLabels": false,
+    "composite": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+    "noUncheckedIndexedAccess": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "stripInternal": true
   }
 }

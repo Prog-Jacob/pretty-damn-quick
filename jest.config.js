@@ -1,9 +1,13 @@
-const { base } = require("@paleite/jest-config");
-
 /** @typedef {import('ts-jest')} */
 /** @type {import('@jest/types').Config.InitialOptions} */
 module.exports = {
-  ...base,
+  testEnvironment: "node",
+  testMatch: ["**/?(*.)+(spec|test).[jt]s?(x)"],
+  transform: {
+    "^.+\\.(ts|tsx)$": "ts-jest",
+    "^.+\\.(js|jsx)$": "babel-jest",
+  },
+  moduleFileExtensions: ["ts", "tsx", "js", "jsx", "json", "node"],
   coveragePathIgnorePatterns: [".test-d.ts", "/__fixtures__/"],
   coverageThreshold: {
     global: {
