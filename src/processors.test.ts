@@ -1,137 +1,192 @@
-jest.mock("./git", () => ({
-  ...jest.requireActual<typeof git>("./git"),
-  getUntrackedFileList: jest.fn(),
-  getDiffFileList: jest.fn(),
-  getDiffForFile: jest.fn(),
-  hasCleanIndex: jest.fn(),
-}));
-
-import type { Linter } from "eslint";
+import * as fs from "fs";
+import prettier from "prettier";
 import * as git from "./git";
+import log from "./log";
 import {
-  diff as fixtureDiff,
-  staged as fixtureStaged,
-} from "./__fixtures__/diff";
-import { postprocessArguments } from "./__fixtures__/postprocessArguments";
+  runPrettier,
+  resolveTargetFiles,
+  processWholeFile,
+  processFileByRanges,
+  type PrettierOptionsCLI,
+} from "./processors";
+import { Range } from "./Range";
 
-const [messages, filename] = postprocessArguments;
-const untrackedFilename = "an-untracked-file.js";
+jest.mock("./git");
+jest.mock("./log");
+jest.mock("prettier");
+jest.mock("fs");
 
-const gitMocked: jest.MockedObjectDeep<typeof git> = jest.mocked(git);
-gitMocked.getDiffFileList.mockReturnValue([filename]);
-gitMocked.getUntrackedFileList.mockReturnValue([untrackedFilename]);
+const gitMocked = jest.mocked(git);
+const logMocked = jest.mocked(log);
+const fsMocked = jest.mocked(fs);
+const prettierMocked = jest.mocked(prettier);
 
-describe("processors", () => {
-  it("preprocess (diff and staged)", async () => {
-    // The preprocessor does not depend on `staged` being true or false, so it's
-    // sufficient to only test one of them.
-    const validFilename = filename;
-    const sourceCode = "/** Some source code */";
+const baseOptions: PrettierOptionsCLI = {
+  check: false,
+  staged: false,
+  changed: false,
+  lines: false,
+};
 
-    const { diff: diffProcessors } = await import("./processors");
-
-    expect(diffProcessors.preprocess(sourceCode, validFilename)).toEqual([
-      sourceCode,
-    ]);
+beforeEach(() => {
+  jest.clearAllMocks();
+  gitMocked.getDiffFileList.mockReturnValue([]);
+  gitMocked.getUntrackedFileList.mockReturnValue([]);
+  gitMocked.hasCleanIndex.mockReturnValue(true);
+  fsMocked.readFileSync.mockReturnValue("code");
+  fsMocked.writeFileSync.mockImplementation(() => undefined);
+  prettierMocked.getFileInfo.mockResolvedValue({
+    ignored: false,
+    inferredParser: null,
   });
+  prettierMocked.resolveConfig.mockResolvedValue({});
+  prettierMocked.format.mockResolvedValue("formatted");
+});
 
-  it("diff postprocess", async () => {
-    gitMocked.getDiffForFile.mockReturnValue(fixtureDiff);
+afterEach(() => {
+  process.exitCode = 0;
+});
 
-    const { diff: diffProcessors } = await import("./processors");
-
-    expect(diffProcessors.postprocess(messages, filename)).toMatchSnapshot();
-  });
-
-  it("diff postprocess with no messages", async () => {
-    gitMocked.getDiffForFile.mockReturnValue(fixtureDiff);
-
-    const { diff: diffProcessors } = await import("./processors");
-
-    const noMessages: Linter.LintMessage[][] = [];
-    expect(diffProcessors.postprocess(noMessages, filename)).toEqual(
-      noMessages
+describe("resolveTargetFiles", () => {
+  it("collects staged, changed, and untracked files by extension", () => {
+    gitMocked.getDiffFileList.mockImplementation((staged) =>
+      staged ? ["a.js"] : ["b.ts"],
     );
+    gitMocked.getUntrackedFileList.mockReturnValue(["c.js"]);
+    const opts = {
+      ...baseOptions,
+      staged: true,
+      changed: true,
+      extensions: ["js"],
+    };
+    expect(resolveTargetFiles(opts)).toEqual(["a.js", "c.js"]);
   });
 
-  it("diff postprocess for untracked files with messages", async () => {
-    gitMocked.getDiffForFile.mockReturnValue(fixtureDiff);
-
-    const { staged: stagedProcessors } = await import("./processors");
-
-    const untrackedFilesMessages: Linter.LintMessage[] = [
-      { ruleId: "mock", severity: 1, message: "mock msg", line: 1, column: 1 },
-    ];
-
-    expect(
-      stagedProcessors.postprocess([untrackedFilesMessages], untrackedFilename)
-    ).toEqual(untrackedFilesMessages);
+  it("deduplicates files", () => {
+    gitMocked.getDiffFileList.mockReturnValue(["a.js", "b.ts"]);
+    gitMocked.getUntrackedFileList.mockReturnValue(["a.js"]);
+    const opts = {
+      ...baseOptions,
+      staged: true,
+      changed: true,
+      extensions: ["js"],
+    };
+    expect(resolveTargetFiles(opts)).toEqual(["a.js"]);
   });
 
-  it("staged postprocess", async () => {
-    gitMocked.hasCleanIndex.mockReturnValueOnce(true);
-    gitMocked.getDiffForFile.mockReturnValueOnce(fixtureStaged);
-
-    const { staged: stagedProcessors } = await import("./processors");
-
-    expect(stagedProcessors.postprocess(messages, filename)).toMatchSnapshot();
-  });
-
-  it("should report fatal errors", async () => {
-    gitMocked.getDiffForFile.mockReturnValue(fixtureDiff);
-    const [[firstMessage, ...restMessage], ...restMessageArray] = messages;
-    const messagesWithFatal: Linter.LintMessage[][] = [
-      [{ ...firstMessage, fatal: true }, ...restMessage],
-      ...restMessageArray,
-    ];
-
-    const { diff: diffProcessors } = await import("./processors");
-
-    expect(diffProcessors.postprocess(messages, filename)).toHaveLength(2);
-    expect(
-      diffProcessors.postprocess(messagesWithFatal, filename)
-    ).toHaveLength(3);
-  });
-
-  it("should report fatal errors for staged postprocess with unclean index", async () => {
-    gitMocked.hasCleanIndex.mockReturnValueOnce(false);
-    gitMocked.getDiffForFile.mockReturnValueOnce(fixtureStaged);
-
-    const { staged: stagedProcessors } = await import("./processors");
-
-    const fileWithDirtyIndex = "file-with-dirty-index.js";
-    const [errorMessage] = stagedProcessors.postprocess(
-      messages,
-      fileWithDirtyIndex
-    );
-
-    expect(errorMessage?.fatal).toBe(true);
-    expect(errorMessage?.message).toMatchInlineSnapshot(
-      `"file-with-dirty-index.js has unstaged changes. Please stage or remove the changes."`
+  it("handles no extension filter", () => {
+    gitMocked.getDiffFileList.mockReturnValue(["a.js", "b.ts"]);
+    gitMocked.getUntrackedFileList.mockReturnValue(["c.ts"]);
+    const opts = { ...baseOptions, staged: true, changed: true };
+    expect(resolveTargetFiles(opts).sort()).toEqual(
+      ["a.js", "b.ts", "c.ts"].sort(),
     );
   });
 });
 
-describe("configs", () => {
-  it("diff", async () => {
-    const { diffConfig } = await import("./processors");
-    expect(diffConfig).toMatchSnapshot();
+describe("processWholeFile", () => {
+  const opts = { ...baseOptions };
+
+  it("skips unstaged changes when staged", async () => {
+    gitMocked.hasCleanIndex.mockReturnValue(false);
+    const result = await processWholeFile("file.js", { ...opts, staged: true });
+    expect(result).toBe(true);
+    expect(logMocked.skipped).toHaveBeenCalled();
   });
 
-  it("staged", async () => {
-    const { stagedConfig } = await import("./processors");
-    expect(stagedConfig).toMatchSnapshot();
+  it.each([
+    ["ignored", true, "same", "same", true, true],
+    ["formatted & written", false, "old", "new", false, true],
+    ["check mode diff", false, "old", "new", true, false],
+    ["check identical", false, "same", "same", true, true],
+  ])("%s", async (_, ignored, code, formatted, check, expected) => {
+    prettierMocked.getFileInfo.mockResolvedValueOnce({
+      ignored,
+      inferredParser: null,
+    });
+    fsMocked.readFileSync.mockReturnValue(code);
+    prettierMocked.format.mockResolvedValue(formatted);
+    const result = await processWholeFile("file.js", { ...opts, check });
+    expect(result).toBe(expected);
+  });
+
+  it("handles null config gracefully", async () => {
+    prettierMocked.resolveConfig.mockResolvedValueOnce(null);
+    fsMocked.readFileSync.mockReturnValue("abc");
+    prettierMocked.format.mockResolvedValueOnce("abc");
+    const result = await processWholeFile("file.js", { ...opts, check: true });
+    expect(result).toBe(true);
   });
 });
 
-describe("fatal error-message", () => {
-  it("getUnstagedChangesError", async () => {
-    const { getUnstagedChangesError } = await import("./processors");
+describe("processFileByRanges", () => {
+  const baseRange = new Range(0, 1);
 
-    const [result] = getUnstagedChangesError("mock filename.ts");
-    expect(result.fatal).toBe(true);
-    expect(result.message).toMatchInlineSnapshot(
-      '"mock filename.ts has unstaged changes. Please stage or remove the changes."'
-    );
+  beforeEach(() => {
+    gitMocked.getDiffForFile.mockReturnValue("diff");
+    gitMocked.getRangesForDiff.mockReturnValue([baseRange]);
+    fsMocked.readFileSync.mockReturnValue("line1\nline2");
+  });
+
+  it("formats changed ranges", async () => {
+    const result = await processFileByRanges("file.js", {
+      ...baseOptions,
+      lines: true,
+    });
+    expect(result).toBe(true);
+    expect(fsMocked.writeFileSync).toHaveBeenCalled();
+  });
+
+  it("skips ignored files", async () => {
+    prettierMocked.getFileInfo.mockResolvedValueOnce({
+      ignored: true,
+      inferredParser: null,
+    });
+    const result = await processFileByRanges("file.js", {
+      ...baseOptions,
+      lines: true,
+    });
+    expect(result).toBe(true);
+  });
+
+  it("reports diff in check mode", async () => {
+    prettierMocked.format.mockResolvedValue("formatted");
+    const result = await processFileByRanges("file.js", {
+      ...baseOptions,
+      check: true,
+      lines: true,
+    });
+    expect(result).toBe(false);
+    expect(logMocked.checked).toHaveBeenCalled();
+  });
+
+  it("handles null config gracefully", async () => {
+    prettierMocked.resolveConfig.mockResolvedValueOnce(null);
+    prettierMocked.format.mockImplementation((input) => Promise.resolve(input));
+    const result = await processFileByRanges("file.js", {
+      ...baseOptions,
+      check: true,
+      lines: true,
+    });
+    expect(result).toBe(true);
+  });
+});
+
+describe("runPrettier", () => {
+  it("logs when no files", async () => {
+    await runPrettier({ ...baseOptions, check: true });
+    expect(logMocked.info).toHaveBeenCalledWith("No files to process.");
+  });
+
+  it.each([
+    [false, "whole-file mode"],
+    [true, "line-ranges mode"],
+  ])("sets exitCode=1 when check fails (%s)", async (lines) => {
+    gitMocked.getDiffFileList.mockReturnValue(["a.js"]);
+    fsMocked.readFileSync.mockReturnValue("old");
+    prettierMocked.format.mockResolvedValue("new");
+    gitMocked.getRangesForDiff.mockReturnValue([new Range(0, 1)]);
+    await runPrettier({ ...baseOptions, check: true, staged: true, lines });
+    expect(process.exitCode).toBe(1);
   });
 });
