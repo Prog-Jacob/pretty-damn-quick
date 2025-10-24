@@ -31,6 +31,7 @@
     "build": "tsc --build tsconfig.build.json",
     "clean": "tsc --build tsconfig.build.json --clean",
     "format": "prettier --write .",
+    "format:changed": "pretty-damn-quick --changed --lines",
     "lint": "eslint --cache --ext .js,.ts --fix .",
     "prepare": "husky install",
     "prepublishOnly": "pinst --disable",
@@ -59,7 +60,6 @@
     "np": "^7.7.0",
     "pinst": "^3.0.0",
     "prettier": "^3.0.0",
-    "pretty-quick": "^4.2.2",
     "ts-jest": "^29.0.5",
     "tsd": "^0.25.0",
     "typescript": "^4.9.4"
@@ -72,5 +72,8 @@
   },
   "dependencies": {
     "yargs": "^18.0.0"
+  },
+  "bin": {
+    "pretty-damn-quick": "dist/index.js"
   }
 }
