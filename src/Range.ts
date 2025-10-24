@@ -4,16 +4,24 @@ class Range {
 
   constructor(
     inclusiveLowerBound: Readonly<number>,
-    exclusiveUpperBound: Readonly<number>
+    exclusiveUpperBound: Readonly<number>,
   ) {
     if (inclusiveLowerBound >= exclusiveUpperBound) {
       throw TypeError(
-        `inclusiveLowerBound must be strictly less than exclusiveUpperBound: ${inclusiveLowerBound} >= ${exclusiveUpperBound}`
+        `inclusiveLowerBound must be strictly less than exclusiveUpperBound: ${inclusiveLowerBound} >= ${exclusiveUpperBound}`,
       );
     }
 
     this.inclusiveLowerBound = inclusiveLowerBound;
     this.exclusiveUpperBound = exclusiveUpperBound;
+  }
+
+  rangeStart(): number {
+    return this.inclusiveLowerBound - 1;
+  }
+
+  rangeEnd(): number {
+    return this.exclusiveUpperBound - 1;
   }
 
   isWithinRange(n: Readonly<number>): boolean {
