@@ -42,6 +42,16 @@ Check formatting (without changing files) for all changed files:
 npx pretty-damn-quick --changed --check
 ```
 
+Add to your package.json scripts:
+
+```json
+{
+  "scripts": {
+    "format:changed": "pretty-damn-quick --changed --lines"
+  }
+}
+```
+
 ## Status
 
 This tool is under active development and will be published to npm soon.
