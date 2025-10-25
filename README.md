@@ -17,29 +17,27 @@ npx pretty-damn-quick --changed --lines
 ## Options
 
 ```bash
+pretty-damn-quick [options] [glob]
+
 Options:
   --version     Show version number                                    [boolean]
-  --check       Only check formatting, do not change files             [boolean]
+  --check       Do not format, just check formatting                   [boolean]
   --staged      Run only on staged files                               [boolean]
   --changed     Run only on changed files                              [boolean]
-  --lines       Format only changed or staged lines                    [boolean]
+  --lines       Format only changed/staged lines                       [boolean]
   --extensions  Comma-separated list of file extensions to process (e.g.,
-                'ts,js,jsx')                                           [string]
+                'ts,js,jsx')                                            [string]
   --help        Show help                                              [boolean]
-```
 
-## Examples
+Examples:
+  pretty-damn-quick --changed               Format all changed files in the repo
+  pretty-damn-quick --staged                Format all staged files in the repo
+  pretty-damn-quick --changed               Format changed files matching the
+  "src/**/*.{ts,js}"                        glob pattern
+  pretty-damn-quick --changed --lines       Format only changed lines in changed
+                                            files
 
-Format only the lines you changed in staged files:
-
-```sh
-npx pretty-damn-quick --staged --lines
-```
-
-Check formatting (without changing files) for all changed files:
-
-```sh
-npx pretty-damn-quick --changed --check
+Format only your changed or staged files with Prettier, fast.
 ```
 
 Add to your package.json scripts:
@@ -47,7 +45,7 @@ Add to your package.json scripts:
 ```json
 {
   "scripts": {
-    "format:changed": "pretty-damn-quick --changed --lines"
+    "cl:format": "pretty-damn-quick --changed --lines"
   }
 }
 ```

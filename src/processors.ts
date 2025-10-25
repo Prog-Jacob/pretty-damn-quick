@@ -3,6 +3,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import prettier from "prettier";
+import micromatch from "micromatch";
 
 import {
   getDiffFileList,
@@ -40,6 +41,7 @@ type PrettierOptionsCLI = {
   changed: boolean; // --changed: only changed files
   lines: boolean; // --lines: format only changed lines
   extensions?: string[]; // e.g., ['ts','js']: filter by file extensions
+  pattern?: string; // glob pattern to filter files
 };
 
 // ================================
@@ -104,8 +106,13 @@ function resolveTargetFiles(options: PrettierOptionsCLI): string[] {
 
   // Filter by extensions if provided
   if (options.extensions?.length) {
-    const exts = options.extensions.map((e) => e.replace(/^\./, ""));
+    const exts = options.extensions ?? [];
     files = files.filter((file) => exts.includes(path.extname(file).slice(1)));
+  }
+
+  // Filter by glob pattern if provided (from positional argument)
+  if (options.pattern) {
+    files = micromatch.match(files, options.pattern, { dot: true });
   }
 
   files = files.filter((file) => fs.statSync(file).isFile());

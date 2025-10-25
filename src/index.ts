@@ -17,6 +17,19 @@ export { runPrettier };
 export async function runCli(argv: string[]): Promise<void> {
   // 1. Parse CLI Arguments
   const parsed = yargs(hideBin(argv))
+    .usage(`\npretty-damn-quick [options] [glob]`)
+    .example([
+      ["pretty-damn-quick --changed", "Format all changed files in the repo"],
+      ["pretty-damn-quick --staged", "Format all staged files in the repo"],
+      [
+        'pretty-damn-quick --changed "src/**/*.{ts,js}"',
+        "Format changed files matching the glob pattern",
+      ],
+      [
+        "pretty-damn-quick --changed --lines",
+        "Format only changed lines in changed files",
+      ],
+    ])
     .options({
       check: {
         type: "boolean",
@@ -41,6 +54,7 @@ export async function runCli(argv: string[]): Promise<void> {
       },
     })
     .help()
+    .epilog("Format only your changed or staged files with Prettier, fast.")
     .parseSync();
 
   // 2. Convert CLI Args to Options Object
@@ -56,6 +70,7 @@ export async function runCli(argv: string[]): Promise<void> {
             .map((ext) => ext.trim())
             .filter(Boolean)
         : [],
+    pattern: parsed._ && parsed._[0] ? String(parsed._[0]) : undefined,
   };
 
   // 3. Execute Prettier

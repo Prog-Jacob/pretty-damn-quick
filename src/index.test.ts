@@ -16,8 +16,11 @@ type YargsMock = {
 
 const createYargsMock = (): YargsMock =>
   Object.assign(jest.fn(), {
+    usage: jest.fn().mockReturnThis(),
+    example: jest.fn().mockReturnThis(),
     options: jest.fn().mockReturnThis(),
     help: jest.fn().mockReturnThis(),
+    epilog: jest.fn().mockReturnThis(),
     parseSync: jest.fn(),
   });
 
