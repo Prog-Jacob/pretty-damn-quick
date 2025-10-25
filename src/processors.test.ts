@@ -35,7 +35,7 @@ beforeEach(() => {
   gitMocked.hasCleanIndex.mockReturnValue(true);
   fsMocked.readFileSync.mockReturnValue("code");
   fsMocked.writeFileSync.mockImplementation(() => undefined);
-  fsMocked.statSync.mockReturnValue({ isDirectory: () => false } as fs.Stats);
+  fsMocked.statSync.mockReturnValue({ isFile: () => true } as fs.Stats);
   prettierMocked.getFileInfo.mockResolvedValue({
     ignored: false,
     inferredParser: "babel",
@@ -130,7 +130,7 @@ describe("processFileByRanges", () => {
     gitMocked.getDiffForFile.mockReturnValue("diff");
     gitMocked.getRangesForDiff.mockReturnValue([baseRange]);
     fsMocked.readFileSync.mockReturnValue("line1\nline2");
-    fsMocked.statSync.mockReturnValue({ isDirectory: () => false } as fs.Stats);
+    fsMocked.statSync.mockReturnValue({ isFile: () => true } as fs.Stats);
   });
 
   it("formats changed ranges", async () => {
@@ -186,12 +186,13 @@ describe("runPrettier", () => {
   it.each([
     [false, "whole-file mode"],
     [true, "line-ranges mode"],
-  ])("sets exitCode=1 when check fails (%s)", async (lines) => {
+  ])("throws when check fails (%s)", async (lines) => {
     gitMocked.getDiffFileList.mockReturnValue(["a.js"]);
     fsMocked.readFileSync.mockReturnValue("old");
     prettierMocked.format.mockResolvedValue("new");
     gitMocked.getRangesForDiff.mockReturnValue([new Range(0, 1)]);
-    await runPrettier({ ...baseOptions, check: true, staged: true, lines });
-    expect(process.exitCode).toBe(1);
+    await expect(
+      runPrettier({ ...baseOptions, check: true, staged: true, lines }),
+    ).rejects.toThrow("Some files are not formatted.");
   });
 });

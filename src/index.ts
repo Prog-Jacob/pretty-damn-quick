@@ -4,6 +4,7 @@ import type { PrettierOptionsCLI } from "./processors";
 import { runPrettier } from "./processors";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
+import log from "./log";
 
 // Re-export for programmatic usage
 export { runPrettier };
@@ -58,10 +59,12 @@ export async function runCli(argv: string[]): Promise<void> {
   };
 
   // 3. Execute Prettier
-  await runPrettier(options).catch((err) => {
-    console.error("Error running Prettier:", err);
-    process.exit(1);
-  });
+  try {
+    await runPrettier(options);
+  } catch (err) {
+    log.error(`${err instanceof Error ? err.message : String(err)}`);
+    process.exitCode = 1;
+  }
 }
 
 /* istanbul ignore next */

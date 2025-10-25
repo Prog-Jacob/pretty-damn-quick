@@ -51,6 +51,7 @@ describe("CLI entrypoint", () => {
 
   afterEach(() => {
     jest.clearAllMocks();
+    process.exitCode = 0;
   });
 
   it("parses CLI args and calls runPrettier with correct options", async () => {
@@ -97,9 +98,6 @@ describe("CLI entrypoint", () => {
     const processors = await import("./processors");
     jest.spyOn(processors, "runPrettier").mockRejectedValueOnce(error);
 
-    const exitSpy = jest
-      .spyOn(process, "exit")
-      .mockImplementation(() => undefined as never);
     const errorSpy = jest
       .spyOn(console, "error")
       .mockImplementation(() => undefined);
@@ -108,10 +106,11 @@ describe("CLI entrypoint", () => {
 
     await runCli(["node", "index.js", "--check"]);
 
-    expect(errorSpy).toHaveBeenCalledWith("Error running Prettier:", error);
-    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(errorSpy).toHaveBeenCalledWith(
+      "Error: " + (error.message ?? String(error)),
+    );
+    expect(process.exitCode).toBe(1);
 
-    exitSpy.mockRestore();
     errorSpy.mockRestore();
   });
 });

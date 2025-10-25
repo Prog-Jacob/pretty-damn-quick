@@ -56,18 +56,24 @@ async function runPrettier(options: PrettierOptionsCLI): Promise<void> {
   let allOk = true;
 
   for (const file of targetFiles) {
-    const ok = options.lines
-      ? await processFileByRanges(file, options)
-      : await processWholeFile(file, options);
-
-    if (!ok) {
+    try {
+      const ok = options.lines
+        ? await processFileByRanges(file, options)
+        : await processWholeFile(file, options);
+      if (!ok) {
+        allOk = false;
+      }
+    } catch (err) {
+      log.error(
+        `Error processing file ${file}: ${err instanceof Error ? err.message : String(err)}`,
+      );
       allOk = false;
     }
   }
 
-  // Exit with error code if --check and any files are not formatted
+  // Report error but do not exit; let caller decide what to do
   if (options.check && !allOk) {
-    process.exitCode = 1;
+    throw new Error("Some files are not formatted.");
   }
 }
 
@@ -102,7 +108,7 @@ function resolveTargetFiles(options: PrettierOptionsCLI): string[] {
     files = files.filter((file) => exts.includes(path.extname(file).slice(1)));
   }
 
-  files = files.filter((file) => !fs.statSync(file).isDirectory());
+  files = files.filter((file) => fs.statSync(file).isFile());
 
   return files;
 }
