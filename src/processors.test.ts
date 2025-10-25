@@ -35,9 +35,10 @@ beforeEach(() => {
   gitMocked.hasCleanIndex.mockReturnValue(true);
   fsMocked.readFileSync.mockReturnValue("code");
   fsMocked.writeFileSync.mockImplementation(() => undefined);
+  fsMocked.statSync.mockReturnValue({ isDirectory: () => false } as fs.Stats);
   prettierMocked.getFileInfo.mockResolvedValue({
     ignored: false,
-    inferredParser: null,
+    inferredParser: "babel",
   });
   prettierMocked.resolveConfig.mockResolvedValue({});
   prettierMocked.format.mockResolvedValue("formatted");
@@ -95,20 +96,23 @@ describe("processWholeFile", () => {
   });
 
   it.each([
-    ["ignored", true, "same", "same", true, true],
-    ["formatted & written", false, "old", "new", false, true],
-    ["check mode diff", false, "old", "new", true, false],
-    ["check identical", false, "same", "same", true, true],
-  ])("%s", async (_, ignored, code, formatted, check, expected) => {
-    prettierMocked.getFileInfo.mockResolvedValueOnce({
-      ignored,
-      inferredParser: null,
-    });
-    fsMocked.readFileSync.mockReturnValue(code);
-    prettierMocked.format.mockResolvedValue(formatted);
-    const result = await processWholeFile("file.js", { ...opts, check });
-    expect(result).toBe(expected);
-  });
+    ["ignored", true, null, "same", "same", true, true],
+    ["formatted & written", false, "babel", "old", "new", false, true],
+    ["check mode diff", false, "babel", "old", "new", true, false],
+    ["check identical", false, "babel", "same", "same", true, true],
+  ])(
+    "%s",
+    async (_, ignored, inferredParser, code, formatted, check, expected) => {
+      prettierMocked.getFileInfo.mockResolvedValueOnce({
+        ignored,
+        inferredParser,
+      });
+      fsMocked.readFileSync.mockReturnValue(code);
+      prettierMocked.format.mockResolvedValue(formatted);
+      const result = await processWholeFile("file.js", { ...opts, check });
+      expect(result).toBe(expected);
+    },
+  );
 
   it("handles null config gracefully", async () => {
     prettierMocked.resolveConfig.mockResolvedValueOnce(null);
@@ -126,6 +130,7 @@ describe("processFileByRanges", () => {
     gitMocked.getDiffForFile.mockReturnValue("diff");
     gitMocked.getRangesForDiff.mockReturnValue([baseRange]);
     fsMocked.readFileSync.mockReturnValue("line1\nline2");
+    fsMocked.statSync.mockReturnValue({ isDirectory: () => false } as fs.Stats);
   });
 
   it("formats changed ranges", async () => {
@@ -133,7 +138,7 @@ describe("processFileByRanges", () => {
       ...baseOptions,
       lines: true,
     });
-    expect(result).toBe(true);
+    expect(result).toBe(false);
     expect(fsMocked.writeFileSync).toHaveBeenCalled();
   });
 

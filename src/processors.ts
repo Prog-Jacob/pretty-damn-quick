@@ -102,6 +102,8 @@ function resolveTargetFiles(options: PrettierOptionsCLI): string[] {
     files = files.filter((file) => exts.includes(path.extname(file).slice(1)));
   }
 
+  files = files.filter((file) => !fs.statSync(file).isDirectory());
+
   return files;
 }
 
@@ -125,7 +127,7 @@ async function processWholeFile(
   const info = await prettier.getFileInfo(file);
   const config = await prettier.resolveConfig(file);
 
-  if (info.ignored) {
+  if (info.ignored || info.inferredParser === null) {
     return true;
   }
 
@@ -155,50 +157,82 @@ async function processFileByRanges(
   file: string,
   options: PrettierOptionsCLI,
 ): Promise<boolean> {
-  const lines = fs.readFileSync(file, "utf-8").split("\n");
+  const info = await prettier.getFileInfo(file);
+  const config = await prettier.resolveConfig(file);
+
+  if (info.ignored || info.inferredParser === null) {
+    return true;
+  }
+
+  const originalText = fs.readFileSync(file, "utf-8");
+  const lineOffsets = new LineOffsets(originalText);
   const diff = getDiffForFile(file, options.staged);
-  const ranges = getRangesForDiff(diff); // only changed lines
+  const ranges = getRangesForDiff(diff);
+  const sortedRanges = [...ranges].sort(
+    (a, b) => b.rangeStart() - a.rangeStart(),
+  );
 
-  let allOk = true;
-  let changed = false;
+  let currentText = originalText;
 
-  for (const range of ranges) {
-    const start = range.rangeStart();
-    const end = range.rangeEnd();
-    const input = lines.slice(start, end).join("\n");
+  for (const range of sortedRanges) {
+    const startLine = range.rangeStart();
+    const endLine = range.rangeEnd();
+    const start = lineOffsets.getOffset(startLine);
+    const end = lineOffsets.getOffset(endLine) - 1;
 
-    const info = await prettier.getFileInfo(file);
-    const config = await prettier.resolveConfig(file);
-
-    if (info.ignored) {
-      continue;
-    }
-
-    const formatted = await prettier.format(input, {
+    currentText = await prettier.format(currentText, {
       ...(config ?? {}),
       filepath: file,
-      rangeStart: 0,
-      rangeEnd: input.length,
+      rangeStart: start,
+      rangeEnd: end,
     });
 
     if (options.check) {
-      if (formatted !== input) {
-        log.checked(file, `${start + 1}-${end}`);
-        allOk = false;
+      const originalSegment = originalText.slice(start, end);
+      const currentSegment = currentText.slice(start, end);
+
+      if (originalSegment !== currentSegment) {
+        log.checked(file, `${startLine + 1}-${endLine}`);
       }
-    } else if (formatted !== input) {
-      // Replace only changed lines in memory
-      lines.splice(start, end - start, ...formatted.split("\n"));
-      changed = true;
-      log.formatted(file, `${start + 1}-${end}`);
     }
   }
 
-  if (!options.check && changed) {
-    fs.writeFileSync(file, lines.join("\n"), "utf-8");
+  const isNoChange =
+    currentText.length === originalText.length && currentText === originalText;
+
+  if (!options.check && !isNoChange) {
+    fs.writeFileSync(file, currentText, "utf-8");
   }
 
-  return allOk;
+  return isNoChange;
+}
+
+class LineOffsets {
+  private offsets: number[];
+
+  constructor(text: string) {
+    this.offsets = [0];
+    const lines = text.split(/\r?\n/);
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i] ?? "";
+      const lineWidth = line.length;
+      const previousOffset = this.offsets[i] ?? 0;
+      const lineEndingOffset = previousOffset + lineWidth;
+      const lineEnding = text.slice(lineEndingOffset, lineEndingOffset + 2);
+      const lineEndingWidth = lineEnding?.startsWith("\r\n")
+        ? 2
+        : lineEnding?.startsWith("\n")
+          ? 1
+          : 0;
+
+      this.offsets[i + 1] = previousOffset + lineWidth + lineEndingWidth;
+    }
+  }
+
+  getOffset(line: number) {
+    return this.offsets[line] ?? 0;
+  }
 }
 
 // Top-level export
