@@ -67,7 +67,7 @@ describe("getDiffForFile", () => {
     expect(diffFromFile).toContain("@@");
   });
 
-  it("should work when using staged = false", () => {
+  it("should ignore diff commit when using staged = false", () => {
     mockedChildProcess.execFileSync.mockReturnValueOnce(Buffer.from(hunks));
     process.env.ESLINT_PLUGIN_DIFF_COMMIT = "1234567";
 
@@ -75,7 +75,7 @@ describe("getDiffForFile", () => {
 
     const expectedCommand = "git";
     const expectedArgs =
-      "diff --diff-algorithm=histogram --diff-filter=ACM --find-renames=100% --no-ext-diff --relative --unified=0 1234567";
+      "diff --diff-algorithm=histogram --diff-filter=ACM --find-renames=100% --no-ext-diff --relative --unified=0";
 
     const lastCall = mockedChildProcess.execFileSync.mock.calls.at(-1);
     const [command, argsIncludingFile = []] = lastCall ?? [""];
@@ -87,7 +87,7 @@ describe("getDiffForFile", () => {
     expect(diffFromFile).toContain("@@");
   });
 
-  it("should use HEAD when no commit was defined", () => {
+  it("should use INDEX when no commit was defined for only --changed", () => {
     mockedChildProcess.execFileSync.mockReturnValueOnce(Buffer.from(hunks));
     process.env.ESLINT_PLUGIN_DIFF_COMMIT = undefined;
 
@@ -95,7 +95,7 @@ describe("getDiffForFile", () => {
 
     const expectedCommand = "git";
     const expectedArgs =
-      "diff --diff-algorithm=histogram --diff-filter=ACM --find-renames=100% --no-ext-diff --relative --unified=0 HEAD";
+      "diff --diff-algorithm=histogram --diff-filter=ACM --find-renames=100% --no-ext-diff --relative --unified=0";
 
     const lastCall = mockedChildProcess.execFileSync.mock.calls.at(-1);
     const [command, argsIncludingFile = []] = lastCall ?? [""];

@@ -89,12 +89,11 @@ function resolveTargetFiles(options: PrettierOptionsCLI): string[] {
 
   let files: string[] = [];
 
-  // Include staged or changed files depending on options
-  if (options.staged !== options.changed || options.staged) {
+  if (options.staged === options.changed || options.staged) {
     files.push(...stagedFiles);
   }
 
-  if (options.staged !== options.changed || options.changed) {
+  if (options.staged === options.changed || options.changed) {
     files.push(...changedFiles);
   }
 
