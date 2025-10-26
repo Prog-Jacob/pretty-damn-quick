@@ -77,6 +77,7 @@ describe("CLI entrypoint", () => {
       check: true,
       staged: true,
       changed: false,
+      trackedOnly: false,
       lines: false,
       extensions: ["ts", "js"],
     });
@@ -91,6 +92,7 @@ describe("CLI entrypoint", () => {
       check: false,
       staged: false,
       changed: false,
+      trackedOnly: false,
       lines: false,
       extensions: [],
     });
@@ -139,6 +141,7 @@ describe("exports", () => {
         check: false,
         staged: false,
         changed: false,
+        trackedOnly: false,
         lines: false,
         extensions: [],
       }),

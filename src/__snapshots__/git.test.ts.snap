@@ -3,16 +3,16 @@
 exports[`getRangesForDiff should find the ranges of each staged file 1`] = `
 [
   Range {
-    "exclusiveUpperBound": 1,
-    "inclusiveLowerBound": 0,
+    "exclusiveUpperBound": 9,
+    "inclusiveLowerBound": 7,
   },
   Range {
     "exclusiveUpperBound": 6,
     "inclusiveLowerBound": 2,
   },
   Range {
-    "exclusiveUpperBound": 9,
-    "inclusiveLowerBound": 7,
+    "exclusiveUpperBound": 1,
+    "inclusiveLowerBound": 0,
   },
 ]
 `;

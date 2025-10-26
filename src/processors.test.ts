@@ -26,6 +26,7 @@ const baseOptions: PrettierOptionsCLI = {
   staged: false,
   changed: false,
   lines: false,
+  trackedOnly: false,
 };
 
 beforeEach(() => {

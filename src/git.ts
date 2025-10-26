@@ -142,18 +142,21 @@ const getRangeForChangedLines = (line: string) => {
 };
 
 const getRangesForDiff = (diff: string): Range[] =>
-  diff.split("\n").reduce<Range[]>((ranges, line) => {
-    if (!isHunkHeader(line)) {
-      return ranges;
-    }
+  diff
+    .split("\n")
+    .reduce<Range[]>((ranges, line) => {
+      if (!isHunkHeader(line)) {
+        return ranges;
+      }
 
-    const range = getRangeForChangedLines(line);
-    if (range === null) {
-      return ranges;
-    }
+      const range = getRangeForChangedLines(line);
+      if (range === null) {
+        return ranges;
+      }
 
-    return [...ranges, range];
-  }, []);
+      return [...ranges, range];
+    }, [])
+    .sort((a, b) => b.rangeStart() - a.rangeStart());
 
 export {
   fetchFromOrigin,

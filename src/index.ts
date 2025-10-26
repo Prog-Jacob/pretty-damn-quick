@@ -43,9 +43,20 @@ export async function runCli(argv: string[]): Promise<void> {
         type: "boolean",
         description: "Run only on changed files",
       },
-      lines: {
+      trackedOnly: {
         type: "boolean",
-        description: "Format only changed/staged lines",
+        description: "Process only tracked files (ignore untracked files)",
+        default: false,
+      },
+      lines: {
+        type: "string",
+        description:
+          "Format only changed/staged lines (optionally pass 'experimental')",
+        coerce: (val: unknown): PrettierOptionsCLI["lines"] => {
+          if (val === "experimental" || typeof val === "boolean") return val;
+          if (typeof val === "string") return true;
+          return false;
+        },
       },
       extensions: {
         type: "string",
@@ -62,6 +73,7 @@ export async function runCli(argv: string[]): Promise<void> {
     check: parsed.check ?? false,
     staged: parsed.staged ?? false,
     changed: parsed.changed ?? false,
+    trackedOnly: parsed.trackedOnly ?? false,
     lines: parsed.lines ?? false,
     extensions:
       typeof parsed.extensions === "string"

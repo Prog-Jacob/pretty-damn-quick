@@ -15,6 +15,8 @@ import {
 } from "./git";
 import { guessBranch } from "./ci";
 import log from "./log";
+import { LineOffsets } from "./offsets";
+import { insertMarkers, mergeMarkedSections } from "./marker";
 
 // ================================
 // 1. Branch Fetching for CI
@@ -39,7 +41,8 @@ type PrettierOptionsCLI = {
   check: boolean; // --check: only check formatting
   staged: boolean; // --staged: only staged files
   changed: boolean; // --changed: only changed files
-  lines: boolean; // --lines: format only changed lines
+  trackedOnly: boolean; // --tracked-only: doesn't process untracked files
+  lines: boolean | "experimental"; // --lines: format only changed lines, or 'experimental'
   extensions?: string[]; // e.g., ['ts','js']: filter by file extensions
   pattern?: string; // glob pattern to filter files
 };
@@ -59,9 +62,12 @@ async function runPrettier(options: PrettierOptionsCLI): Promise<void> {
 
   for (const file of targetFiles) {
     try {
-      const ok = options.lines
-        ? await processFileByRanges(file, options)
-        : await processWholeFile(file, options);
+      const ok =
+        options.lines === "experimental"
+          ? await processRangesWithMarkers(file, options)
+          : options.lines
+            ? await processFileByRanges(file, options)
+            : await processWholeFile(file, options);
       if (!ok) {
         allOk = false;
       }
@@ -97,8 +103,9 @@ function resolveTargetFiles(options: PrettierOptionsCLI): string[] {
     files.push(...changedFiles);
   }
 
-  // Always include untracked files
-  files.push(...untrackedFiles);
+  if (!options.trackedOnly) {
+    files.push(...untrackedFiles);
+  }
 
   // Remove duplicates
   files = Array.from(new Set(files));
@@ -180,13 +187,18 @@ async function processFileByRanges(
   const lineOffsets = new LineOffsets(originalText);
   const diff = getDiffForFile(file, options.staged);
   const ranges = getRangesForDiff(diff);
-  const sortedRanges = [...ranges].sort(
-    (a, b) => b.rangeStart() - a.rangeStart(),
-  );
+
+  if (
+    ranges.length === 1 &&
+    ranges[0]?.rangeStart() === 0 &&
+    ranges[0]?.rangeEnd() === lineOffsets.totalLines()
+  ) {
+    return processWholeFile(file, options);
+  }
 
   let currentText = originalText;
 
-  for (const range of sortedRanges) {
+  for (const range of ranges) {
     const startLine = range.rangeStart();
     const endLine = range.rangeEnd();
     const start = lineOffsets.getOffset(startLine);
@@ -219,31 +231,61 @@ async function processFileByRanges(
   return isNoChange;
 }
 
-class LineOffsets {
-  private offsets: number[];
+// ================================
+// 7. Process File by Changed Ranges Using Markers
+// ================================
 
-  constructor(text: string) {
-    this.offsets = [0];
-    const lines = text.split(/\r?\n/);
+async function processRangesWithMarkers(
+  file: string,
+  options: PrettierOptionsCLI,
+): Promise<boolean> {
+  const originalText = fs.readFileSync(file, "utf-8");
+  const info = await prettier.getFileInfo(file);
+  const config = await prettier.resolveConfig(file);
 
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i] ?? "";
-      const lineWidth = line.length;
-      const previousOffset = this.offsets[i] ?? 0;
-      const lineEndingOffset = previousOffset + lineWidth;
-      const lineEnding = text.slice(lineEndingOffset, lineEndingOffset + 2);
-      const lineEndingWidth = lineEnding?.startsWith("\r\n")
-        ? 2
-        : lineEnding?.startsWith("\n")
-          ? 1
-          : 0;
-
-      this.offsets[i + 1] = previousOffset + lineWidth + lineEndingWidth;
-    }
+  if (info.ignored || info.inferredParser === null) {
+    return true;
   }
 
-  getOffset(line: number) {
-    return this.offsets[line] ?? 0;
+  const diff = getDiffForFile(file, options.staged);
+  const ranges = getRangesForDiff(diff);
+
+  if (!ranges.length) {
+    return true;
+  }
+
+  try {
+    const markedText = insertMarkers(originalText, ranges, info.inferredParser);
+    const formattedWithMarkers = await prettier.format(markedText, {
+      ...(config ?? {}),
+      filepath: file,
+    });
+    const mergedText = mergeMarkedSections(
+      markedText,
+      formattedWithMarkers,
+      info.inferredParser,
+    );
+
+    if (options.check) {
+      if (mergedText !== originalText) {
+        for (const range of ranges) {
+          log.checked(file, `${range.rangeStart() + 1}-${range.rangeEnd()}`);
+        }
+        return false;
+      }
+    } else if (mergedText !== originalText) {
+      fs.writeFileSync(file, mergedText, "utf-8");
+      log.formatted(file);
+    }
+
+    return true;
+  } catch (error) {
+    log.error(
+      `Error processing file ${file}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+
+    // Fallback to line-based processing if marker-based fails
+    return processFileByRanges(file, options);
   }
 }
 
@@ -253,5 +295,6 @@ export {
   resolveTargetFiles,
   processWholeFile,
   processFileByRanges,
+  processRangesWithMarkers,
 };
 export type { PrettierOptionsCLI };
