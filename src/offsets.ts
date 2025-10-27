@@ -21,7 +21,7 @@ class LineOffsets {
   }
 
   totalLines() {
-    return this.offsets.length - 2;
+    return this.offsets.length - 1;
   }
 }
 
@@ -32,7 +32,7 @@ function getLineEnding(text: string, charOffset: number): string {
     return "\r\n";
   }
 
-  return " ";
+  return "\n";
 }
 
 export { LineOffsets };

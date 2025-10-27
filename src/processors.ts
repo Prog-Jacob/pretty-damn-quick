@@ -116,12 +116,15 @@ function resolveTargetFiles(options: PrettierOptionsCLI): string[] {
     files = files.filter((file) => exts.includes(path.extname(file).slice(1)));
   }
 
+  files = files.filter(
+    (file) =>
+      fs.statSync(file).isFile() && !path.basename(file).startsWith("."),
+  );
+
   // Filter by glob pattern if provided (from positional argument)
   if (options.pattern) {
     files = micromatch.match(files, options.pattern, { dot: true });
   }
-
-  files = files.filter((file) => fs.statSync(file).isFile());
 
   return files;
 }
@@ -191,7 +194,7 @@ async function processFileByRanges(
   if (
     ranges.length === 1 &&
     ranges[0]?.rangeStart() === 0 &&
-    ranges[0]?.rangeEnd() === lineOffsets.totalLines()
+    Math.abs(ranges[0]?.rangeEnd() - lineOffsets.totalLines()) <= 1
   ) {
     return processWholeFile(file, options);
   }
@@ -250,8 +253,12 @@ async function processRangesWithMarkers(
   const diff = getDiffForFile(file, options.staged);
   const ranges = getRangesForDiff(diff);
 
-  if (!ranges.length) {
-    return true;
+  if (ranges.length === 1 && ranges[0]?.rangeStart() === 0) {
+    const lineOffsets = new LineOffsets(originalText);
+
+    if (Math.abs(ranges[0]?.rangeEnd() - lineOffsets.totalLines()) <= 1) {
+      return processWholeFile(file, options);
+    }
   }
 
   try {

@@ -9,6 +9,7 @@ const COMMENT_STYLES: Record<
 > = {
   // Block: /* ... */
   css: { block: ["/*", "*/"] },
+  ts: { line: "//", block: ["/*", "*/"] },
   flow: { line: "//", block: ["/*", "*/"] },
   apex: { line: "//", block: ["/*", "*/"] },
   scss: { line: "//", block: ["/*", "*/"] },
@@ -18,10 +19,12 @@ const COMMENT_STYLES: Record<
   espree: { line: "//", block: ["/*", "*/"] },
   meriyah: { line: "//", block: ["/*", "*/"] },
   babelFlow: { line: "//", block: ["/*", "*/"] },
+  javascript: { line: "//", block: ["/*", "*/"] },
   typescript: { line: "//", block: ["/*", "*/"] },
 
   // Block: <!-- ... -->
   lwc: { block: ["<!--", "-->"] },
+  xml: { block: ["<!--", "-->"] },
   mdx: { block: ["<!--", "-->"] },
   vue: { block: ["<!--", "-->"] },
   html: { block: ["<!--", "-->"] },
@@ -29,7 +32,13 @@ const COMMENT_STYLES: Record<
   svelte: { block: ["<!--", "-->"] },
   angular: { block: ["<!--", "-->"] },
   markdown: { block: ["<!--", "-->"] },
+  visualforce: { block: ["<!--", "-->"] },
   "angular-html": { block: ["<!--", "-->"] },
+
+  // Line: -- or Block: /* ... */
+  sql: { line: "--", block: ["/*", "*/"] },
+  soql: { line: "--", block: ["/*", "*/"] },
+  sosl: { line: "--", block: ["/*", "*/"] },
 
   // Line: #
   yaml: { line: "#" },
