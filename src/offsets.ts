@@ -6,9 +6,9 @@ class LineOffsets {
     const lines = text.split(/\r?\n/);
 
     for (let i = 0; i < lines.length; i++) {
-      const line = lines[i] ?? "";
+      const line = lines[i] as string;
       const lineWidth = line.length;
-      const previousOffset = this.offsets[i] ?? 0;
+      const previousOffset = this.offsets[i] as number;
       const lineEndingOffset = previousOffset + lineWidth;
       const lineEndingWidth = getLineEnding(text, lineEndingOffset).length;
 

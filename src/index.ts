@@ -14,6 +14,13 @@ export { runPrettier };
 // Only runs when this file is invoked directly (node index.js or npx <package>)
 // ================================
 
+// Exported for test coverage
+export const coerceLines = (val: unknown): PrettierOptionsCLI["lines"] => {
+  if (val === "experimental" || typeof val === "boolean") return val;
+  if (typeof val === "string") return true;
+  return false;
+};
+
 export async function runCli(argv: string[]): Promise<void> {
   // 1. Parse CLI Arguments
   const parsed = yargs(hideBin(argv))
@@ -52,11 +59,7 @@ export async function runCli(argv: string[]): Promise<void> {
         type: "string",
         description:
           "Format only changed/staged lines (optionally pass 'experimental')",
-        coerce: (val: unknown): PrettierOptionsCLI["lines"] => {
-          if (val === "experimental" || typeof val === "boolean") return val;
-          if (typeof val === "string") return true;
-          return false;
-        },
+        coerce: coerceLines,
       },
       extensions: {
         type: "string",

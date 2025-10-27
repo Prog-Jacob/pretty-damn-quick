@@ -47,6 +47,18 @@ describe("getRangesForDiff", () => {
 });
 
 describe("getDiffForFile", () => {
+  it("should use HEAD as default commit when staged is true and no commit is defined", () => {
+    mockedChildProcess.execFileSync.mockReturnValueOnce(Buffer.from(hunks));
+    process.env.ESLINT_PLUGIN_DIFF_COMMIT = undefined;
+
+    getDiffForFile("./mockfile.js", true);
+    const lastCall = mockedChildProcess.execFileSync.mock.calls.at(-1);
+    const args = lastCall?.[1] ?? [];
+
+    expect(args).toContain("HEAD");
+    expect(args).toContain("--staged");
+  });
+
   it("should get the staged diff of a file", () => {
     mockedChildProcess.execFileSync.mockReturnValueOnce(Buffer.from(hunks));
     process.env.ESLINT_PLUGIN_DIFF_COMMIT = "1234567";

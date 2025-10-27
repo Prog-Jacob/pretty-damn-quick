@@ -34,6 +34,8 @@ beforeEach(() => {
   gitMocked.getDiffFileList.mockReturnValue([]);
   gitMocked.getUntrackedFileList.mockReturnValue([]);
   gitMocked.hasCleanIndex.mockReturnValue(true);
+  gitMocked.getDiffForFile.mockReturnValue("diff");
+  gitMocked.getRangesForDiff.mockReturnValue([new Range(0, 1)]);
   fsMocked.readFileSync.mockReturnValue("code");
   fsMocked.writeFileSync.mockImplementation(() => undefined);
   fsMocked.statSync.mockReturnValue({ isFile: () => true } as fs.Stats);
@@ -50,49 +52,46 @@ afterEach(() => {
 });
 
 describe("resolveTargetFiles", () => {
-  it("collects staged, changed, and untracked files by extension", () => {
+  it("filters by pattern, extensions, and deduplicates", () => {
     gitMocked.getDiffFileList.mockImplementation((staged) =>
-      staged ? ["a.js"] : ["b.ts"],
+      staged ? ["a.js", "foo.js"] : ["b.ts", "bar.ts"],
     );
-    gitMocked.getUntrackedFileList.mockReturnValue(["c.js"]);
-    const opts = {
-      ...baseOptions,
-      staged: true,
-      changed: true,
-      extensions: ["js"],
-    };
-    expect(resolveTargetFiles(opts)).toEqual(["a.js", "c.js"]);
-  });
+    gitMocked.getUntrackedFileList.mockReturnValue(["a.js", "c.js", "baz.js"]);
 
-  it("deduplicates files", () => {
-    gitMocked.getDiffFileList.mockReturnValue(["a.js", "b.ts"]);
-    gitMocked.getUntrackedFileList.mockReturnValue(["a.js"]);
-    const opts = {
-      ...baseOptions,
-      staged: true,
-      changed: true,
-      extensions: ["js"],
-    };
-    expect(resolveTargetFiles(opts)).toEqual(["a.js"]);
-  });
+    expect(
+      resolveTargetFiles({
+        ...baseOptions,
+        staged: true,
+        changed: true,
+        pattern: "*z.js",
+      }),
+    ).toEqual(["baz.js"]);
 
-  it("handles no extension filter", () => {
-    gitMocked.getDiffFileList.mockReturnValue(["a.js", "b.ts"]);
-    gitMocked.getUntrackedFileList.mockReturnValue(["c.ts"]);
-    const opts = { ...baseOptions, staged: true, changed: true };
-    expect(resolveTargetFiles(opts).sort()).toEqual(
-      ["a.js", "b.ts", "c.ts"].sort(),
-    );
+    expect(
+      resolveTargetFiles({
+        ...baseOptions,
+        staged: true,
+        changed: true,
+        extensions: ["js"],
+      }),
+    ).toEqual(["a.js", "foo.js", "c.js", "baz.js"]);
+
+    expect(
+      resolveTargetFiles({
+        ...baseOptions,
+        staged: true,
+        changed: true,
+      }).sort(),
+    ).toEqual(["a.js", "foo.js", "b.ts", "bar.ts", "c.js", "baz.js"].sort());
   });
 });
 
 describe("processWholeFile", () => {
-  const opts = { ...baseOptions };
-
   it("skips unstaged changes when staged", async () => {
     gitMocked.hasCleanIndex.mockReturnValue(false);
-    const result = await processWholeFile("file.js", { ...opts, staged: true });
-    expect(result).toBe(true);
+    expect(
+      await processWholeFile("file.js", { ...baseOptions, staged: true }),
+    ).toBe(true);
     expect(logMocked.skipped).toHaveBeenCalled();
   });
 
@@ -101,6 +100,7 @@ describe("processWholeFile", () => {
     ["formatted & written", false, "babel", "old", "new", false, true],
     ["check mode diff", false, "babel", "old", "new", true, false],
     ["check identical", false, "babel", "same", "same", true, true],
+    ["null config", false, "babel", "abc", "abc", true, true],
   ])(
     "%s",
     async (_, ignored, inferredParser, code, formatted, check, expected) => {
@@ -108,86 +108,142 @@ describe("processWholeFile", () => {
         ignored,
         inferredParser,
       });
+      prettierMocked.resolveConfig.mockResolvedValueOnce(ignored ? {} : null);
       fsMocked.readFileSync.mockReturnValue(code);
       prettierMocked.format.mockResolvedValue(formatted);
-      const result = await processWholeFile("file.js", { ...opts, check });
-      expect(result).toBe(expected);
+      expect(await processWholeFile("file.js", { ...baseOptions, check })).toBe(
+        expected,
+      );
     },
   );
-
-  it("handles null config gracefully", async () => {
-    prettierMocked.resolveConfig.mockResolvedValueOnce(null);
-    fsMocked.readFileSync.mockReturnValue("abc");
-    prettierMocked.format.mockResolvedValueOnce("abc");
-    const result = await processWholeFile("file.js", { ...opts, check: true });
-    expect(result).toBe(true);
-  });
 });
 
 describe("processFileByRanges", () => {
-  const baseRange = new Range(0, 1);
+  const testRangeProcessing = async (processor: string, opts = baseOptions) => {
+    const { processRangesWithMarkers } = await import("./processors");
+    const fn =
+      processor === "markers" ? processRangesWithMarkers : processFileByRanges;
+    return fn("file.js", { ...opts, lines: true });
+  };
 
-  beforeEach(() => {
-    gitMocked.getDiffForFile.mockReturnValue("diff");
-    gitMocked.getRangesForDiff.mockReturnValue([baseRange]);
-    fsMocked.readFileSync.mockReturnValue("line1\nline2");
-    fsMocked.statSync.mockReturnValue({ isFile: () => true } as fs.Stats);
-  });
+  it.each([
+    ["processFileByRanges", "ranges"],
+    ["processRangesWithMarkers", "markers"],
+  ])("%s: shortcut path and basic formatting", async (_, processor) => {
+    // Full diff - formatted
+    gitMocked.getRangesForDiff.mockReturnValue([new Range(0, 2)]);
+    fsMocked.readFileSync.mockReturnValue("old");
+    prettierMocked.format.mockResolvedValue("new");
+    expect(await testRangeProcessing(processor)).toBe(false);
+    expect(fsMocked.writeFileSync).toHaveBeenCalledWith(
+      "file.js",
+      "new",
+      "utf-8",
+    );
 
-  it("formats changed ranges", async () => {
-    const result = await processFileByRanges("file.js", {
-      ...baseOptions,
-      lines: true,
-    });
-    expect(result).toBe(false);
+    // Full diff - already formatted
+    fsMocked.writeFileSync.mockClear();
+    gitMocked.getRangesForDiff.mockReturnValue([new Range(0, 2)]);
+    fsMocked.readFileSync.mockReturnValue("same");
+    prettierMocked.format.mockResolvedValue("same");
+    expect(await testRangeProcessing(processor)).toBe(true);
+    expect(fsMocked.writeFileSync).not.toHaveBeenCalled();
+
+    // Partial ranges
+    fsMocked.writeFileSync.mockClear();
+    gitMocked.getRangesForDiff.mockReturnValue([new Range(0, 1)]);
+    fsMocked.readFileSync.mockReturnValue("old");
+    prettierMocked.format.mockResolvedValue("new");
+    expect(await testRangeProcessing(processor)).toBe(false);
     expect(fsMocked.writeFileSync).toHaveBeenCalled();
   });
 
-  it("skips ignored files", async () => {
+  it("handles ignored files and null config", async () => {
     prettierMocked.getFileInfo.mockResolvedValueOnce({
       ignored: true,
       inferredParser: null,
     });
-    const result = await processFileByRanges("file.js", {
-      ...baseOptions,
-      lines: true,
-    });
-    expect(result).toBe(true);
+    expect(
+      await processFileByRanges("file.js", { ...baseOptions, lines: true }),
+    ).toBe(true);
+
+    prettierMocked.resolveConfig.mockResolvedValueOnce(null);
+    prettierMocked.format.mockImplementation((input) => Promise.resolve(input));
+    expect(
+      await processFileByRanges("file.js", {
+        ...baseOptions,
+        check: true,
+        lines: true,
+      }),
+    ).toBe(true);
   });
 
   it("reports diff in check mode", async () => {
     prettierMocked.format.mockResolvedValue("formatted");
-    const result = await processFileByRanges("file.js", {
-      ...baseOptions,
-      check: true,
-      lines: true,
-    });
-    expect(result).toBe(false);
+    expect(
+      await processFileByRanges("file.js", {
+        ...baseOptions,
+        check: true,
+        lines: true,
+      }),
+    ).toBe(false);
     expect(logMocked.checked).toHaveBeenCalled();
   });
 
-  it("handles null config gracefully", async () => {
-    prettierMocked.resolveConfig.mockResolvedValueOnce(null);
-    prettierMocked.format.mockImplementation((input) => Promise.resolve(input));
-    const result = await processFileByRanges("file.js", {
-      ...baseOptions,
-      check: true,
-      lines: true,
+  it("marker-specific: check mode and error fallback", async () => {
+    const marker = await import("./marker");
+    jest
+      .spyOn(marker, "insertMarkers")
+      .mockImplementation(() => `<<MARKED>>original`);
+    jest
+      .spyOn(marker, "mergeMarkedSections")
+      .mockImplementation(() => "changed");
+    prettierMocked.format.mockResolvedValue("changed");
+    fsMocked.readFileSync.mockReturnValue("original");
+
+    const { processRangesWithMarkers } = await import("./processors");
+    expect(
+      await processRangesWithMarkers("file.js", {
+        ...baseOptions,
+        check: true,
+      }),
+    ).toBe(false);
+    expect(logMocked.checked).toHaveBeenCalled();
+
+    // Error fallback
+    jest.clearAllMocks();
+    jest.spyOn(marker, "insertMarkers").mockImplementation(() => {
+      throw new Error("marker fail");
     });
-    expect(result).toBe(true);
+    fsMocked.readFileSync.mockReturnValue("old");
+    prettierMocked.format.mockResolvedValue("new");
+    expect(await processRangesWithMarkers("file.js", baseOptions)).toBe(false);
+    expect(logMocked.error).toHaveBeenCalledWith(
+      expect.stringContaining("marker fail"),
+    );
   });
 });
 
 describe("runPrettier", () => {
-  it("logs when no files", async () => {
+  it("handles edge cases", async () => {
     await runPrettier({ ...baseOptions, check: true });
     expect(logMocked.info).toHaveBeenCalledWith("No files to process.");
+
+    gitMocked.getDiffFileList.mockReturnValue(["a.js"]);
+    fsMocked.readFileSync.mockReturnValue("code");
+    prettierMocked.format.mockImplementation(() => {
+      throw new Error("fail");
+    });
+    await expect(
+      runPrettier({ ...baseOptions, staged: true }),
+    ).resolves.toBeUndefined();
+    expect(logMocked.error).toHaveBeenCalled();
   });
 
   it.each([
     [false, "whole-file mode"],
     [true, "line-ranges mode"],
-  ])("throws when check fails (%s)", async (lines) => {
+  ])("throws when check fails in %s", async (lines) => {
     gitMocked.getDiffFileList.mockReturnValue(["a.js"]);
     fsMocked.readFileSync.mockReturnValue("old");
     prettierMocked.format.mockResolvedValue("new");

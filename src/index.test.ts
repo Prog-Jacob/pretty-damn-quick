@@ -1,30 +1,21 @@
 process.env.CI = "true";
 import * as child_process from "child_process";
 import { type PrettierOptionsCLI } from "./processors";
+import { coerceLines } from "./index";
 
 jest.mock("child_process");
-const mockedChildProcess = jest.mocked(child_process, { shallow: true });
-mockedChildProcess.execFileSync.mockReturnValue(
-  Buffer.from("line1\nline2\nline3"),
-);
+jest
+  .mocked(child_process, { shallow: true })
+  .execFileSync.mockReturnValue(Buffer.from("line1\nline2\nline3"));
 
-type YargsMock = {
-  options: jest.Mock;
-  help: jest.Mock;
-  parseSync: jest.Mock;
+const yargsMock = {
+  usage: jest.fn().mockReturnThis(),
+  example: jest.fn().mockReturnThis(),
+  options: jest.fn().mockReturnThis(),
+  help: jest.fn().mockReturnThis(),
+  epilog: jest.fn().mockReturnThis(),
+  parseSync: jest.fn(),
 };
-
-const createYargsMock = (): YargsMock =>
-  Object.assign(jest.fn(), {
-    usage: jest.fn().mockReturnThis(),
-    example: jest.fn().mockReturnThis(),
-    options: jest.fn().mockReturnThis(),
-    help: jest.fn().mockReturnThis(),
-    epilog: jest.fn().mockReturnThis(),
-    parseSync: jest.fn(),
-  });
-
-const yargsMock = createYargsMock();
 
 jest.mock("yargs", () => ({
   __esModule: true,
@@ -36,27 +27,40 @@ jest.mock("yargs/helpers", () => ({
 }));
 
 let runCli: (argv: string[]) => Promise<void>;
+let runPrettierSpy: jest.SpyInstance<Promise<void>, [PrettierOptionsCLI]>;
 
 beforeAll(async () => {
   const mod = await import("./index");
+  const processors = await import("./processors");
   runCli = mod.runCli;
+  runPrettierSpy = jest
+    .spyOn(processors, "runPrettier")
+    .mockResolvedValue(undefined);
 });
 
-describe("CLI entrypoint", () => {
-  let runPrettierSpy: jest.SpyInstance<Promise<void>, [PrettierOptionsCLI]>;
+afterEach(() => {
+  jest.clearAllMocks();
+  process.exitCode = 0;
+});
 
-  beforeEach(async () => {
-    const processors = await import("./processors");
-    runPrettierSpy = jest
-      .spyOn(processors, "runPrettier")
-      .mockResolvedValue(undefined);
+describe("coerceLines", () => {
+  it.each([
+    ["experimental", "experimental"], // special string preserved
+    [true, true], // booleans preserved
+    [false, false],
+    ["foo", true], // other strings become true
+    ["", true],
+    [undefined, false], // non-string/non-boolean become false
+    [null, false],
+    [{}, false],
+    [123, false],
+    [[], false],
+  ])("coerceLines(%s) === %s", (input, expected) => {
+    expect(coerceLines(input)).toBe(expected);
   });
+});
 
-  afterEach(() => {
-    jest.clearAllMocks();
-    process.exitCode = 0;
-  });
-
+describe("CLI", () => {
   it("parses CLI args and calls runPrettier with correct options", async () => {
     yargsMock.parseSync.mockReturnValue({
       check: true,
@@ -83,7 +87,7 @@ describe("CLI entrypoint", () => {
     });
   });
 
-  it("defaults options when none provided", async () => {
+  it("uses default options when none provided", async () => {
     yargsMock.parseSync.mockReturnValue({});
 
     await runCli(["node", "index.js"]);
@@ -98,56 +102,49 @@ describe("CLI entrypoint", () => {
     });
   });
 
-  it("calls process.exit(1) and logs error if runPrettier throws", async () => {
-    const error = new Error("fail!");
-    const processors = await import("./processors");
-    jest.spyOn(processors, "runPrettier").mockRejectedValueOnce(error);
+  it("sets pattern from positional argument", async () => {
+    yargsMock.parseSync.mockReturnValue({ _: ["src/**/*.ts"] });
 
-    const errorSpy = jest
-      .spyOn(console, "error")
-      .mockImplementation(() => undefined);
+    await runCli(["node", "index.js", "src/**/*.ts"]);
 
-    yargsMock.parseSync.mockReturnValue({ check: true });
-
-    await runCli(["node", "index.js", "--check"]);
-
-    expect(errorSpy).toHaveBeenCalledWith(
-      "Error: " + (error.message ?? String(error)),
+    expect(runPrettierSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ pattern: "src/**/*.ts" }),
     );
-    expect(process.exitCode).toBe(1);
+  });
 
-    errorSpy.mockRestore();
+  it("logs error message and sets exit code when runPrettier throws Error", async () => {
+    const log = (await import("./log")).default;
+    runPrettierSpy.mockRejectedValueOnce(new Error("fail!"));
+    const logSpy = jest.spyOn(log, "error").mockImplementation(() => undefined);
+    yargsMock.parseSync.mockReturnValue({});
+
+    await runCli(["node", "index.js"]);
+
+    expect(logSpy).toHaveBeenCalledWith("fail!");
+    expect(process.exitCode).toBe(1);
+    logSpy.mockRestore();
+  });
+
+  it("logs error and sets exit code when runPrettier throws non-Error", async () => {
+    const log = (await import("./log")).default;
+    runPrettierSpy.mockRejectedValueOnce("fail-string");
+    const logSpy = jest.spyOn(log, "error").mockImplementation(() => undefined);
+    yargsMock.parseSync.mockReturnValue({});
+
+    await runCli(["node", "index.js"]);
+
+    expect(logSpy).toHaveBeenCalledWith("fail-string");
+    expect(process.exitCode).toBe(1);
+    logSpy.mockRestore();
   });
 });
 
 describe("exports", () => {
-  it("exports expected runPrettier function", async () => {
+  it("re-exports runPrettier from processors", async () => {
     jest.resetModules();
-    const real = await import("./processors");
-    expect(typeof real.runPrettier).toBe("function");
-    expect(real.runPrettier).toMatchSnapshot();
-  });
-
-  it("allows direct runPrettier call through index (spy only)", async () => {
-    jest.resetModules();
-    const processors = await import("./processors");
-    const spy = jest
-      .spyOn(processors, "runPrettier")
-      .mockResolvedValue(undefined);
     const { runPrettier } = await import("./index");
+    const processors = await import("./processors");
 
-    await expect(
-      runPrettier({
-        check: false,
-        staged: false,
-        changed: false,
-        trackedOnly: false,
-        lines: false,
-        extensions: [],
-      }),
-    ).resolves.toBeUndefined();
-
-    expect(spy).toHaveBeenCalled();
-    spy.mockRestore();
+    expect(runPrettier).toBe(processors.runPrettier);
   });
 });
