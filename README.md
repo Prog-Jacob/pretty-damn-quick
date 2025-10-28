@@ -20,14 +20,19 @@ npx pretty-damn-quick --changed --lines
 pretty-damn-quick [options] [glob]
 
 Options:
-  --version     Show version number                                    [boolean]
-  --check       Do not format, just check formatting                   [boolean]
-  --staged      Run only on staged files                               [boolean]
-  --changed     Run only on changed files                              [boolean]
-  --lines       Format only changed/staged lines                       [boolean]
-  --extensions  Comma-separated list of file extensions to process (e.g.,
-                'ts,js,jsx')                                            [string]
-  --help        Show help                                              [boolean]
+  --version      Show version number                                   [boolean]
+  --check        Do not format, just check formatting                  [boolean]
+  --staged       Run only on staged files                              [boolean]
+  --changed      Run only on changed files                             [boolean]
+  --trackedOnly  Process only tracked files (ignore untracked files)
+                                                      [boolean] [default: false]
+  --lines        Format only changed/staged lines (optionally pass
+                 'experimental')                                        [string]
+  --extensions   Comma-separated list of file extensions to process (e.g.,
+                 'ts,js,jsx')                                           [string]
+  --logLevel     Set the logging level (info, warn, error)
+                  [string] [choices: "info", "warn", "error"] [default: "error"]
+  --help         Show help                                             [boolean]
 
 Examples:
   pretty-damn-quick --changed               Format all changed files in the repo
