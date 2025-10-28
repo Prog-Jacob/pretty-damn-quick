@@ -120,7 +120,7 @@ describe("CLI", () => {
 
     await runCli(["node", "index.js"]);
 
-    expect(logSpy).toHaveBeenCalledWith("fail!");
+    expect(logSpy).toHaveBeenCalledWith(expect.any(Error));
     expect(process.exitCode).toBe(1);
     logSpy.mockRestore();
   });
@@ -136,6 +136,21 @@ describe("CLI", () => {
     expect(logSpy).toHaveBeenCalledWith("fail-string");
     expect(process.exitCode).toBe(1);
     logSpy.mockRestore();
+  });
+
+  it("registers process exit handler to print summary with provided logLevel", async () => {
+    const log = (await import("./log")).default;
+    const printSpy = jest
+      .spyOn(log, "printSummary")
+      .mockImplementation(() => undefined);
+
+    yargsMock.parseSync.mockReturnValue({ logLevel: "info" });
+    await runCli(["node", "index.js"]);
+
+    // Simulate process exit to trigger the handler
+    (process as unknown as NodeJS.EventEmitter).emit("exit");
+    expect(printSpy).toHaveBeenCalledWith({ level: "info" });
+    printSpy.mockRestore();
   });
 });
 

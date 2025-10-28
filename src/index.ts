@@ -4,7 +4,7 @@ import type { PrettierOptionsCLI } from "./processors";
 import { runPrettier } from "./processors";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
-import log from "./log";
+import log, { LogLevel } from "./log";
 
 // Re-export for programmatic usage
 export { runPrettier };
@@ -66,6 +66,12 @@ export async function runCli(argv: string[]): Promise<void> {
         description:
           "Comma-separated list of file extensions to process (e.g., 'ts,js,jsx')",
       },
+      logLevel: {
+        type: "string",
+        description: "Set the logging level (info, warn, error)",
+        default: "error",
+        choices: ["info", "warn", "error"],
+      },
     })
     .help()
     .epilog("Format only your changed or staged files with Prettier, fast.")
@@ -92,9 +98,13 @@ export async function runCli(argv: string[]): Promise<void> {
   try {
     await runPrettier(options);
   } catch (err) {
-    log.error(`${err instanceof Error ? err.message : String(err)}`);
+    log.error(err);
     process.exitCode = 1;
   }
+
+  process.on("exit", () =>
+    log.printSummary({ level: parsed.logLevel as LogLevel }),
+  );
 }
 
 /* istanbul ignore next */

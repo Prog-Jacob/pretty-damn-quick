@@ -97,7 +97,7 @@ describe("processWholeFile", () => {
 
   it.each([
     ["ignored", true, null, "same", "same", true, true],
-    ["formatted & written", false, "babel", "old", "new", false, true],
+    ["formatted & written", false, "babel", "old", "new", false, false],
     ["check mode diff", false, "babel", "old", "new", true, false],
     ["check identical", false, "babel", "same", "same", true, true],
     ["null config", false, "babel", "abc", "abc", true, true],
@@ -218,9 +218,7 @@ describe("processFileByRanges", () => {
     fsMocked.readFileSync.mockReturnValue("old");
     prettierMocked.format.mockResolvedValue("new");
     expect(await processRangesWithMarkers("file.js", baseOptions)).toBe(false);
-    expect(logMocked.error).toHaveBeenCalledWith(
-      expect.stringContaining("marker fail"),
-    );
+    expect(logMocked.error).toHaveBeenCalledWith(expect.any(Error), "file.js");
   });
 });
 
@@ -234,9 +232,9 @@ describe("runPrettier", () => {
     prettierMocked.format.mockImplementation(() => {
       throw new Error("fail");
     });
-    await expect(
-      runPrettier({ ...baseOptions, staged: true }),
-    ).resolves.toBeUndefined();
+    await expect(runPrettier({ ...baseOptions, staged: true })).rejects.toThrow(
+      "Prettier exiting error(s) occurred. See above for details.",
+    );
     expect(logMocked.error).toHaveBeenCalled();
   });
 

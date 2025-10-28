@@ -127,4 +127,4 @@ function escapeRegex(pattern: string): string {
   return pattern.replace(/[/\-\\^$*+?.()|[\]{}]/g, "\\$&");
 }
 
-export { insertMarkers, mergeMarkedSections };
+export { insertMarkers, mergeMarkedSections, escapeRegex };

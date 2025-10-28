@@ -59,6 +59,7 @@ async function runPrettier(options: PrettierOptionsCLI): Promise<void> {
   }
 
   let allOk = true;
+  let hasExitingError = false;
 
   for (const file of targetFiles) {
     try {
@@ -72,17 +73,26 @@ async function runPrettier(options: PrettierOptionsCLI): Promise<void> {
         allOk = false;
       }
     } catch (err) {
-      log.error(
-        `Error processing file ${file}: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      allOk = false;
+      log.error(err, file);
+
+      const errMessage =
+        err instanceof Error ? (err.stack ?? err.message) : String(err);
+
+      if (err instanceof SyntaxError || !errMessage.includes("prettier")) {
+        hasExitingError = true;
+      }
     }
   }
 
-  // Report error but do not exit; let caller decide what to do
-  if (options.check && !allOk) {
+  if (hasExitingError) {
+    throw new Error(
+      "Prettier exiting error(s) occurred. See above for details.",
+    );
+  } else if (options.check && !allOk) {
     throw new Error("Some files are not formatted.");
   }
+
+  process.exitCode = 0;
 }
 
 // ================================
@@ -157,18 +167,19 @@ async function processWholeFile(
     ...(config ?? {}),
     filepath: file,
   });
+  const isNoChange = code.length === formatted.length && code === formatted;
 
   if (options.check) {
-    if (formatted !== code) {
+    if (!isNoChange) {
       log.checked(file);
       return false;
     }
-  } else if (formatted !== code) {
+  } else if (!isNoChange) {
     fs.writeFileSync(file, formatted, "utf-8");
     log.formatted(file);
   }
 
-  return true;
+  return isNoChange;
 }
 
 // ================================
@@ -217,8 +228,11 @@ async function processFileByRanges(
     if (options.check) {
       const originalSegment = originalText.slice(start, end);
       const currentSegment = currentText.slice(start, end);
+      const isNoChange =
+        originalSegment.length === currentSegment.length &&
+        originalSegment === currentSegment;
 
-      if (originalSegment !== currentSegment) {
+      if (!isNoChange) {
         log.checked(file, `${startLine + 1}-${endLine}`);
       }
     }
@@ -287,9 +301,7 @@ async function processRangesWithMarkers(
 
     return true;
   } catch (error) {
-    log.error(
-      `Error processing file ${file}: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    log.error(error, file);
 
     // Fallback to line-based processing if marker-based fails
     return processFileByRanges(file, options);
