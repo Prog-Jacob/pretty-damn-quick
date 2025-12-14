@@ -2,6 +2,7 @@ import { Range } from "./Range";
 import { randomUUID } from "crypto";
 import { LineOffsets } from "./offsets";
 
+export const END_LINE = "\n";
 const PDQ_UUID = randomUUID();
 const COMMENT_STYLES: Record<
   string,
@@ -63,7 +64,9 @@ function getMarker(parser: string): string {
     return `${commentStyle.block[0]}${markerId}${commentStyle.block[1]}`;
   }
 
-  throw new Error(`Unsupported parser for marker generation: ${parser}`);
+  throw new Error(
+    `[PDQ Marker] Unsupported parser for marker generation: ${parser}`,
+  );
 }
 
 // Insert markers into file content for given ranges.
@@ -76,7 +79,7 @@ function insertMarkers(
   const marker = getMarker(parser);
 
   if (!/\r?\n$/.test(fileContent)) {
-    result += "\n";
+    result += END_LINE;
   }
 
   const offsets = new LineOffsets(fileContent);
@@ -89,9 +92,12 @@ function insertMarkers(
     const startOffset = offsets.getOffset(startLine);
 
     result =
-      result.slice(0, endOffset) + marker + "\n" + result.slice(endOffset);
+      result.slice(0, endOffset) + marker + END_LINE + result.slice(endOffset);
     result =
-      result.slice(0, startOffset) + marker + "\n" + result.slice(startOffset);
+      result.slice(0, startOffset) +
+      marker +
+      END_LINE +
+      result.slice(startOffset);
   }
 
   return result;
@@ -114,7 +120,7 @@ function mergeMarkedSections(
 
   if (originalParts.length !== formattedParts.length) {
     throw new Error(
-      "Marker count mismatch between original and formatted files.",
+      "[PDQ Marker] Marker count mismatch between original and formatted files.",
     );
   }
 

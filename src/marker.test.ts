@@ -1,4 +1,4 @@
-import { insertMarkers, mergeMarkedSections } from "./marker";
+import { insertMarkers, mergeMarkedSections, END_LINE } from "./marker";
 import { Range } from "./Range";
 
 // Builds a regex to match PDQ markers for the given parser
@@ -10,7 +10,7 @@ describe("insertMarkers", () => {
 
   test("appends a trailing newline if missing", () => {
     const result = insertMarkers("foo\nbar", [new Range(1, 2)], parser);
-    expect(result.endsWith("\n")).toBe(true);
+    expect(result.endsWith(END_LINE)).toBe(true);
   });
 
   test.each([

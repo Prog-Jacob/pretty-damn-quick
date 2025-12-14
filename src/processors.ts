@@ -78,7 +78,7 @@ async function runPrettier(options: PrettierOptionsCLI): Promise<void> {
       const errMessage =
         err instanceof Error ? (err.stack ?? err.message) : String(err);
 
-      if (err instanceof SyntaxError || !errMessage.includes("prettier")) {
+      if (err instanceof SyntaxError || !errMessage.includes("[PDQ Marker]")) {
         hasExitingError = true;
       }
     }
@@ -210,42 +210,48 @@ async function processFileByRanges(
     return processWholeFile(file, options);
   }
 
-  let currentText = originalText;
+  try {
+    let currentText = originalText;
 
-  for (const range of ranges) {
-    const startLine = range.rangeStart();
-    const endLine = range.rangeEnd();
-    const start = lineOffsets.getOffset(startLine);
-    const end = lineOffsets.getOffset(endLine) - 1;
+    for (const range of ranges) {
+      const startLine = range.rangeStart();
+      const endLine = range.rangeEnd();
+      const start = lineOffsets.getOffset(startLine);
+      const end = lineOffsets.getOffset(endLine) - 1;
 
-    currentText = await prettier.format(currentText, {
-      ...(config ?? {}),
-      filepath: file,
-      rangeStart: start,
-      rangeEnd: end,
-    });
+      currentText = await prettier.format(currentText, {
+        ...(config ?? {}),
+        filepath: file,
+        rangeStart: start,
+        rangeEnd: end,
+      });
 
-    if (options.check) {
-      const originalSegment = originalText.slice(start, end);
-      const currentSegment = currentText.slice(start, end);
-      const isNoChange =
-        originalSegment.length === currentSegment.length &&
-        originalSegment === currentSegment;
+      if (options.check) {
+        const originalSegment = originalText.slice(start, end);
+        const currentSegment = currentText.slice(start, end);
+        const isNoChange =
+          originalSegment.length === currentSegment.length &&
+          originalSegment === currentSegment;
 
-      if (!isNoChange) {
-        log.checked(file, `${startLine + 1}-${endLine}`);
+        if (!isNoChange) {
+          log.checked(file, `${startLine + 1}-${endLine}`);
+        }
       }
     }
+
+    const isNoChange =
+      currentText.length === originalText.length &&
+      currentText === originalText;
+
+    if (!options.check && !isNoChange) {
+      fs.writeFileSync(file, currentText, "utf-8");
+    }
+
+    return isNoChange;
+  } catch (error) {
+    log.error(error, file);
+    return processRangesWithMarkers(file, options);
   }
-
-  const isNoChange =
-    currentText.length === originalText.length && currentText === originalText;
-
-  if (!options.check && !isNoChange) {
-    fs.writeFileSync(file, currentText, "utf-8");
-  }
-
-  return isNoChange;
 }
 
 // ================================
@@ -275,37 +281,30 @@ async function processRangesWithMarkers(
     }
   }
 
-  try {
-    const markedText = insertMarkers(originalText, ranges, info.inferredParser);
-    const formattedWithMarkers = await prettier.format(markedText, {
-      ...(config ?? {}),
-      filepath: file,
-    });
-    const mergedText = mergeMarkedSections(
-      markedText,
-      formattedWithMarkers,
-      info.inferredParser,
-    );
+  const markedText = insertMarkers(originalText, ranges, info.inferredParser);
+  const formattedWithMarkers = await prettier.format(markedText, {
+    ...(config ?? {}),
+    filepath: file,
+  });
+  const mergedText = mergeMarkedSections(
+    markedText,
+    formattedWithMarkers,
+    info.inferredParser,
+  );
 
-    if (options.check) {
-      if (mergedText !== originalText) {
-        for (const range of ranges) {
-          log.checked(file, `${range.rangeStart() + 1}-${range.rangeEnd()}`);
-        }
-        return false;
+  if (options.check) {
+    if (mergedText !== originalText) {
+      for (const range of ranges) {
+        log.checked(file, `${range.rangeStart() + 1}-${range.rangeEnd()}`);
       }
-    } else if (mergedText !== originalText) {
-      fs.writeFileSync(file, mergedText, "utf-8");
-      log.formatted(file);
+      return false;
     }
-
-    return true;
-  } catch (error) {
-    log.error(error, file);
-
-    // Fallback to line-based processing if marker-based fails
-    return processFileByRanges(file, options);
+  } else if (mergedText !== originalText) {
+    fs.writeFileSync(file, mergedText, "utf-8");
+    log.formatted(file);
   }
+
+  return true;
 }
 
 // Top-level export

@@ -1,6 +1,7 @@
 import * as child_process from "child_process";
 import { resolve } from "path";
 import { Range } from "./Range";
+import { END_LINE } from "./marker";
 
 const COMMAND = "git";
 const OPTIONS = { maxBuffer: 1024 * 1024 * 100 };
@@ -47,7 +48,7 @@ const getDiffFileList = (staged: boolean): string[] => {
     .execFileSync(COMMAND, args, OPTIONS)
     .toString()
     .trim()
-    .split("\n")
+    .split(END_LINE)
     .map((filePath) => resolve(filePath));
 };
 
@@ -93,7 +94,7 @@ const getUntrackedFileList = (
       .execFileSync(COMMAND, args, OPTIONS)
       .toString()
       .trim()
-      .split("\n")
+      .split(END_LINE)
       .map((filePath) => resolve(filePath));
   }
 
@@ -143,7 +144,7 @@ const getRangeForChangedLines = (line: string) => {
 
 const getRangesForDiff = (diff: string): Range[] =>
   diff
-    .split("\n")
+    .split(END_LINE)
     .reduce<Range[]>((ranges, line) => {
       if (!isHunkHeader(line)) {
         return ranges;

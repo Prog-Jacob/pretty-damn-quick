@@ -1,9 +1,9 @@
 import log from "./log";
-import { escapeRegex } from "./marker";
+import { escapeRegex, END_LINE } from "./marker";
 
 const stripAnsi = (str: string) =>
   str.replaceAll(new RegExp(`${escapeRegex("\x1b[")}[0-9;]*m`, "g"), "");
-const getOutput = () => logs.map(stripAnsi).join("\n");
+const getOutput = () => logs.map(stripAnsi).join(END_LINE);
 const originalConsole = global.console;
 let logs: string[] = [];
 

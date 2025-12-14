@@ -1,3 +1,5 @@
+import { END_LINE } from "./marker";
+
 class LineOffsets {
   private offsets: number[];
 
@@ -32,7 +34,7 @@ function getLineEnding(text: string, charOffset: number): string {
     return "\r\n";
   }
 
-  return "\n";
+  return END_LINE;
 }
 
 export { LineOffsets };
