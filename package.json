@@ -1,6 +1,6 @@
 {
   "name": "pretty-damn-quick",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Run Prettier on your changes only",
   "keywords": [
     "prettier",
