@@ -129,9 +129,9 @@ describe("processFileByRanges", () => {
   it.each([
     ["processFileByRanges", "ranges"],
     ["processRangesWithMarkers", "markers"],
-  ])("%s: shortcut path and basic formatting", async (_, processor) => {
-    // Full diff - formatted
-    gitMocked.getRangesForDiff.mockReturnValue([new Range(0, 2)]);
+  ])("%s: shortcut path (full diff)", async (_, processor) => {
+    // formatted
+    gitMocked.getRangesForDiff.mockReturnValue([new Range(1, 2)]);
     fsMocked.readFileSync.mockReturnValue("old");
     prettierMocked.format.mockResolvedValue("new");
     expect(await testRangeProcessing(processor)).toBe(false);
@@ -141,20 +141,22 @@ describe("processFileByRanges", () => {
       "utf-8",
     );
 
-    // Full diff - already formatted
+    // already formatted
     fsMocked.writeFileSync.mockClear();
-    gitMocked.getRangesForDiff.mockReturnValue([new Range(0, 2)]);
+    gitMocked.getRangesForDiff.mockReturnValue([new Range(1, 2)]);
     fsMocked.readFileSync.mockReturnValue("same");
     prettierMocked.format.mockResolvedValue("same");
     expect(await testRangeProcessing(processor)).toBe(true);
     expect(fsMocked.writeFileSync).not.toHaveBeenCalled();
+  });
 
-    // Partial ranges
-    fsMocked.writeFileSync.mockClear();
-    gitMocked.getRangesForDiff.mockReturnValue([new Range(0, 1)]);
-    fsMocked.readFileSync.mockReturnValue("old");
-    prettierMocked.format.mockResolvedValue("new");
-    expect(await testRangeProcessing(processor)).toBe(false);
+  it("partial ranges formatting", async () => {
+    gitMocked.getRangesForDiff.mockReturnValue([new Range(1, 2)]);
+    fsMocked.readFileSync.mockReturnValue("line1\nline2\nline3\n");
+    prettierMocked.format.mockResolvedValue("formatted\nline2\nline3\n");
+    expect(
+      await processFileByRanges("file.js", { ...baseOptions, lines: true }),
+    ).toBe(false);
     expect(fsMocked.writeFileSync).toHaveBeenCalled();
   });
 
@@ -190,7 +192,7 @@ describe("processFileByRanges", () => {
     expect(logMocked.checked).toHaveBeenCalled();
   });
 
-  it("marker-specific: check mode and error fallback", async () => {
+  it("marker-specific: check mode", async () => {
     const marker = await import("./marker");
     jest
       .spyOn(marker, "insertMarkers")
@@ -209,16 +211,19 @@ describe("processFileByRanges", () => {
       }),
     ).toBe(false);
     expect(logMocked.checked).toHaveBeenCalled();
+  });
 
-    // Error fallback
-    jest.clearAllMocks();
+  it("marker-specific: error propagates to caller", async () => {
+    const marker = await import("./marker");
+    const { processRangesWithMarkers } = await import("./processors");
+
     jest.spyOn(marker, "insertMarkers").mockImplementation(() => {
       throw new Error("marker fail");
     });
-    fsMocked.readFileSync.mockReturnValue("old");
-    prettierMocked.format.mockResolvedValue("new");
-    expect(await processRangesWithMarkers("file.js", baseOptions)).toBe(false);
-    expect(logMocked.error).toHaveBeenCalledWith(expect.any(Error), "file.js");
+
+    await expect(
+      processRangesWithMarkers("file.js", baseOptions),
+    ).rejects.toThrow("marker fail");
   });
 });
 
